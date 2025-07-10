@@ -2,27 +2,35 @@
   ==================================================================================
   Código de Control para Robot Seguidor de Línea - 6 SENSORES IR
   Plataforma: Arduino Mega
-  Versión: 4.6 (Lógica de giro corregida definitivamente)
+  Versión: 4.9 (Velocidades de giro suave corregidas)
 
   Descripción:
-  Este código está diseñado para un robot seguidor de línea con 6 sensores IR.
-  La lógica se ha actualizado para que la condición "todo blanco" (111111) se
-  interprete como que la línea está centrada. Se ha corregido el orden de las
-  condiciones y la dirección de los giros para que el robot reaccione correctamente.
+  Se revierte al modelo de control discreto (paso a paso) que funciona bien en
+  líneas rectas. Se han ajustado las velocidades de giro suave para asegurar
+  que ningún motor reciba un valor de PWM por debajo de su umbral mínimo de
+  movimiento, garantizando giros más fluidos.
   ==================================================================================
 */
 
 // ===== SECCIÓN 1: PARÁMETROS DE AJUSTE =====
 
 // --- Velocidades de Maniobra ---
-const int VELOCIDAD_BASE_DEBUG = 80;
-const int VELOCIDAD_GIRO_DEBUG = 84;
+const int VELOCIDAD_BASE = 80;
+const int VELOCIDAD_GIRO_FUERTE = 84;
 const int VELOCIDAD_BUSQUEDA = 80; // Velocidad para buscar la línea cuando se pierde
 
-// --- Tiempos de Maniobra (en milisegundos) ---
-const int TIEMPO_MANIOBRA = 200;
-const int PAUSA_ENTRE_ACCIONES = 300;
-const int TIEMPO_BUSQUEDA = 150; // Pulso corto hacia adelante para buscar
+// --- Velocidades para Giros Suaves (NUEVO) ---
+const int VELOCIDAD_GIRO_SUAVE_MAX = 84; // Velocidad de la rueda exterior en un giro suave
+const int VELOCIDAD_GIRO_SUAVE_MIN = 80; // Velocidad de la rueda interior (nunca por debajo del mínimo)
+
+// --- Tiempos de Maniobra (en milisegundos) - REDUCIDOS PARA MAYOR AGILIDAD ---
+const int TIEMPO_MANIOBRA = 100;
+const int PAUSA_ENTRE_ACCIONES = 100;
+const int TIEMPO_BUSQUEDA = 120; // Pulso corto hacia adelante para buscar
+//--- Tiempos de Maniobra (en milisegundos) ---
+// const int TIEMPO_MANIOBRA = 200;
+// const int PAUSA_ENTRE_ACCIONES = 300;
+// const int TIEMPO_BUSQUEDA = 150; // Pulso corto hacia adelante para buscar
 
 // ===== SECCIÓN 2: DEFINICIONES DE HARDWARE Y VARIABLES GLOBALES (MODIFICADO) =====
 
@@ -47,7 +55,7 @@ const int STATUS_LED_PIN = 13;
 int lineaPerdidaContador = 0;
 const int MAX_INTENTOS_BUSQUEDA = 7;
 
-// ===== SECCIÓN 3: FUNCIONES DE ACCIÓN DISCRETA (SIN CAMBIOS) =====
+// ===== SECCIÓN 3: FUNCIONES DE ACCIÓN DISCRETA (MODIFICADAS) =====
 
 void accion_Detener() {
   digitalWrite(MOTOR_IZQ_IN1, LOW);
@@ -64,8 +72,8 @@ void accion_AvanzarRecto() {
   digitalWrite(MOTOR_IZQ_IN2, LOW);
   digitalWrite(MOTOR_DER_IN3, HIGH);
   digitalWrite(MOTOR_DER_IN4, LOW);
-  analogWrite(MOTOR_IZQ_ENA, VELOCIDAD_BASE_DEBUG);
-  analogWrite(MOTOR_DER_ENB, VELOCIDAD_BASE_DEBUG);
+  analogWrite(MOTOR_IZQ_ENA, VELOCIDAD_BASE);
+  analogWrite(MOTOR_DER_ENB, VELOCIDAD_BASE);
   delay(TIEMPO_MANIOBRA);
 }
 
@@ -75,8 +83,8 @@ void accion_GiroSuaveDerecha() {
   digitalWrite(MOTOR_IZQ_IN2, LOW);
   digitalWrite(MOTOR_DER_IN3, HIGH);
   digitalWrite(MOTOR_DER_IN4, LOW);
-  analogWrite(MOTOR_IZQ_ENA, VELOCIDAD_GIRO_DEBUG);
-  analogWrite(MOTOR_DER_ENB, VELOCIDAD_BASE_DEBUG / 2);
+  analogWrite(MOTOR_IZQ_ENA, VELOCIDAD_GIRO_SUAVE_MAX);
+  analogWrite(MOTOR_DER_ENB, VELOCIDAD_GIRO_SUAVE_MIN);
   delay(TIEMPO_MANIOBRA);
 }
 
@@ -86,8 +94,8 @@ void accion_GiroSuaveIzquierda() {
   digitalWrite(MOTOR_IZQ_IN2, LOW);
   digitalWrite(MOTOR_DER_IN3, HIGH);
   digitalWrite(MOTOR_DER_IN4, LOW);
-  analogWrite(MOTOR_IZQ_ENA, VELOCIDAD_BASE_DEBUG / 2);
-  analogWrite(MOTOR_DER_ENB, VELOCIDAD_GIRO_DEBUG);
+  analogWrite(MOTOR_IZQ_ENA, VELOCIDAD_GIRO_SUAVE_MIN);
+  analogWrite(MOTOR_DER_ENB, VELOCIDAD_GIRO_SUAVE_MAX);
   delay(TIEMPO_MANIOBRA);
 }
 
@@ -97,8 +105,8 @@ void accion_GiroFuerteDerecha() {
   digitalWrite(MOTOR_IZQ_IN2, LOW);
   digitalWrite(MOTOR_DER_IN3, LOW);
   digitalWrite(MOTOR_DER_IN4, HIGH);
-  analogWrite(MOTOR_IZQ_ENA, VELOCIDAD_GIRO_DEBUG);
-  analogWrite(MOTOR_DER_ENB, VELOCIDAD_GIRO_DEBUG);
+  analogWrite(MOTOR_IZQ_ENA, VELOCIDAD_GIRO_FUERTE);
+  analogWrite(MOTOR_DER_ENB, VELOCIDAD_GIRO_FUERTE);
   delay(TIEMPO_MANIOBRA);
 }
 
@@ -108,8 +116,8 @@ void accion_GiroFuerteIzquierda() {
   digitalWrite(MOTOR_IZQ_IN2, HIGH);
   digitalWrite(MOTOR_DER_IN3, HIGH);
   digitalWrite(MOTOR_DER_IN4, LOW);
-  analogWrite(MOTOR_IZQ_ENA, VELOCIDAD_GIRO_DEBUG);
-  analogWrite(MOTOR_DER_ENB, VELOCIDAD_GIRO_DEBUG);
+  analogWrite(MOTOR_IZQ_ENA, VELOCIDAD_GIRO_FUERTE);
+  analogWrite(MOTOR_DER_ENB, VELOCIDAD_GIRO_FUERTE);
   delay(TIEMPO_MANIOBRA);
 }
 
@@ -158,7 +166,7 @@ void setup() {
   pinMode(MOTOR_DER_ENB, OUTPUT);
   pinMode(STATUS_LED_PIN, OUTPUT);
 
-  Serial.println("SISTEMA CON 6 SENSORES INICIADO (V4.6)");
+  Serial.println("SISTEMA CON 6 SENSORES INICIADO (V4.9)");
   Serial.println("Coloque el robot en la pista. Iniciando en 3 segundos...");
   startupLEDPattern();
   delay(3000);
@@ -183,7 +191,6 @@ void loop() {
   // Caso 7: Intersección o línea ancha (LA MÁS ESPECÍFICA PRIMERO)
   if (s1==0 && s2==0 && s3==0 && s4==0 && s5==0 && s6==0) {
     lineaPerdidaContador = 0;
-    Serial.print("Caso 7: Intersección o línea ancha (LA MÁS ESPECÍFICA PRIMERO) -->  accion_Detener() ");
     accion_Detener(); // Nos detenemos en una intersección
   }
   // Caso 0: Línea centrada (todo blanco). Asumimos que es la condición ideal.
